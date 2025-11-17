@@ -30,8 +30,11 @@ import (
 	"golang.org/x/term"
 )
 
+var (
+	version = "0.1.0" // Set via -ldflags at build time
+)
+
 const (
-	version = "0.1.6"
 	testnetAPI = "https://api.grapevine.markets"
 	mainnetAPI = "https://api.grapevine.fyi"
 	keyringService = "grapevine-cli"
