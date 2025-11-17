@@ -1,0 +1,295 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: make deps
+    
+    - name: Run tests
+      run: make test
+    
+    - name: Build
+      run: make build
+
+  build-release:
+    name: Build Release Binaries
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: make deps
+    
+    - name: Build all platforms
+      run: make build-all
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: binaries
+        path: grapevine-*
+        retention-days: 30
+
+  publish-npm:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: build-release
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24.0'
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        registry-url: 'https://registry.npmjs.org'
+    
+    - name: Cache Go modules
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+    
+    - name: Download dependencies
+      run: make deps
+    
+    - name: Create npm package structure
+      run: |
+        mkdir -p npm-dist/bin
+        
+        # Build binaries for npm
+        GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X main.version=0.1.0" -o npm-dist/bin/grapevine-darwin-arm64 src/main.go
+        GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X main.version=0.1.0" -o npm-dist/bin/grapevine-darwin-x64 src/main.go
+        GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X main.version=0.1.0" -o npm-dist/bin/grapevine-linux-x64 src/main.go
+        GOOS=windows GOARCH=amd64 go build -ldflags "-s -w -X main.version=0.1.0" -o npm-dist/bin/grapevine-win32-x64.exe src/main.go
+        
+        chmod +x npm-dist/bin/grapevine-*
+        
+        # Create cli.js shim
+        cat > npm-dist/cli.js << 'EOF'
+        #!/usr/bin/env node
+        
+        const { spawnSync } = require('node:child_process');
+        const { join } = require('node:path');
+        const os = require('node:os');
+        
+        const platform = process.platform; // 'darwin', 'linux', 'win32'
+        const arch = process.arch;         // 'x64', 'arm64', etc.
+        
+        function getBinaryName() {
+          // Map Node's platform/arch to your compiled filenames
+          if (platform === 'darwin' && arch === 'arm64') return 'grapevine-darwin-arm64';
+          if (platform === 'darwin' && arch === 'x64')   return 'grapevine-darwin-x64';
+          if (platform === 'linux'  && arch === 'x64')   return 'grapevine-linux-x64';
+          if (platform === 'win32'  && arch === 'x64')   return 'grapevine-win32-x64.exe';
+        
+          console.error(`Unsupported platform/arch combo: ${platform}/${arch}`);
+          console.error('Supported platforms:');
+          console.error('  - macOS (Darwin): arm64, x64');
+          console.error('  - Linux: x64');
+          console.error('  - Windows: x64');
+          process.exit(1);
+        }
+        
+        function main() {
+          const binName = getBinaryName();
+          const binPath = join(__dirname, 'bin', binName);
+        
+          const result = spawnSync(binPath, process.argv.slice(2), {
+            stdio: 'inherit',
+          });
+        
+          // If spawn failed (e.g., ENOENT)
+          if (result.error) {
+            console.error(`Failed to run ${binName}:`, result.error.message);
+            console.error(`Binary path: ${binPath}`);
+            process.exit(1);
+          }
+        
+          process.exit(result.status == null ? 0 : result.status);
+        }
+        
+        main();
+        EOF
+        
+        chmod +x npm-dist/cli.js
+        
+        # Create package.json
+        cat > npm-dist/package.json << 'EOF'
+        {
+          "name": "@pinata/grapevine-cli",
+          "version": "0.1.0",
+          "description": "Command-line interface for the Grapevine API - Create and manage content feeds with x402 micropayments",
+          "bin": {
+            "grapevine": "cli.js"
+          },
+          "files": [
+            "cli.js",
+            "bin/"
+          ],
+          "keywords": [
+            "grapevine",
+            "x402",
+            "micropayments",
+            "cli",
+            "content-feeds"
+          ],
+          "author": "PinataCloud",
+          "license": "MIT",
+          "engines": {
+            "node": ">=16"
+          },
+          "repository": {
+            "type": "git",
+            "url": "https://github.com/PinataCloud/grapevine-sdk"
+          },
+          "bugs": {
+            "url": "https://github.com/PinataCloud/grapevine-sdk/issues"
+          },
+          "homepage": "https://github.com/PinataCloud/grapevine-sdk#readme",
+          "os": [
+            "darwin",
+            "linux",
+            "win32"
+          ],
+          "cpu": [
+            "x64",
+            "arm64"
+          ]
+        }
+        EOF
+        
+        # Create README
+        cat > npm-dist/README.md << 'EOF'
+        # Grapevine CLI
+        
+        Command-line interface for the Grapevine API - Create and manage content feeds with x402 micropayments.
+        
+        ## Installation
+        
+        ```bash
+        npm install -g @pinata/grapevine-cli
+        ```
+        
+        ## Usage
+        
+        ```bash
+        # Get help
+        grapevine --help
+        
+        # Authentication
+        grapevine auth login
+        grapevine auth logout
+        grapevine auth status
+        
+        # Feed operations
+        grapevine feed create --name "My Feed" --description "Description"
+        grapevine feed list
+        grapevine feed get <feed-id>
+        grapevine feed update <feed-id> --name "New Name"
+        grapevine feed delete <feed-id>
+        
+        # Entry operations
+        grapevine entry create <feed-id> --cid <ipfs-cid> --title "Entry Title"
+        grapevine entry list <feed-id>
+        grapevine entry get <entry-id>
+        
+        # Wallet utilities
+        grapevine wallet balance
+        grapevine wallet address
+        
+        # Categories and info
+        grapevine categories
+        grapevine info
+        grapevine version
+        ```
+        
+        ## Network Options
+        
+        ```bash
+        # Use testnet (default)
+        grapevine --network testnet [command]
+        
+        # Use mainnet
+        grapevine --network mainnet [command]
+        ```
+        
+        ## Supported Platforms
+        
+        - macOS (Apple Silicon & Intel)
+        - Linux (x64)
+        - Windows (x64)
+        
+        ## About
+        
+        This package contains precompiled binaries for the Grapevine CLI, built from Go source code. No Go toolchain required for installation.
+        
+        ## Repository
+        
+        Source code: https://github.com/PinataCloud/grapevine-sdk
+        
+        ## License
+        
+        MIT
+        EOF
+    
+    - name: Publish to npm
+      run: |
+        cd npm-dist
+        npm publish --access public --provenance
