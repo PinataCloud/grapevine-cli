@@ -3,11 +3,10 @@ name: Build and Release
 on:
   push:
     branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  push:
     tags:
       - 'v*'
+  pull_request:
+    branches: [ main ]
 
 jobs:
   test:
