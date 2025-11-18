@@ -1,0 +1,49 @@
+{
+  "name": "@pinata/grapevine-cli",
+  "version": "0.1.0",
+  "description": "A fast, lightweight command-line interface for the Grapevine API built with Go",
+  "keywords": [
+    "grapevine",
+    "pinata",
+    "cli",
+    "content",
+    "feeds",
+    "x402",
+    "micropayments",
+    "blockchain"
+  ],
+  "homepage": "https://github.com/PinataCloud/grapevine-cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PinataCloud/grapevine-cli.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "Pinata",
+    "url": "https://pinata.cloud"
+  },
+  "bin": {
+    "grapevine": "./bin/grapevine"
+  },
+  "files": [
+    "bin/",
+    "install.js",
+    "README.md"
+  ],
+  "scripts": {
+    "postinstall": "node install.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

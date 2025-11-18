@@ -42,6 +42,7 @@ Thumbs.db
 dist/
 build/
 *.log
+pinata-grapevine-cli-*
 
 # Environment files
 .env

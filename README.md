@@ -11,8 +11,8 @@ npm install -g @pinata/grapevine-cli
 
 ### From Source
 ```bash
-git clone https://github.com/PinataCloud/grapevine-sdk
-cd grapevine-sdk/cli
+git clone https://github.com/PinataCloud/grapevine-cli
+cd grapevine-cli
 make build
 ```
 
@@ -171,11 +171,16 @@ grapevine entry batch FEED_ID entries.json --delay 100
 ## Project Structure
 
 ```
-cli/
+grapevine-cli/
 ├── src/
 │   ├── main.go       # Main CLI application
 │   └── main_test.go  # Unit tests
+├── bin/
+│   └── grapevine     # Binary placeholder (replaced during npm install)
 ├── go.mod            # Go module dependencies
+├── package.json      # npm package configuration
+├── install.js        # npm installation script
+├── Makefile          # Build commands
 └── README.md         # This file
 ```
 
